@@ -10,7 +10,7 @@ PROJECT_FILE="$PROJECT_ROOT/project.godot"
 SHELL_TEMPLATE="$DEPLOY_DIR/html_shell/shell.html"
 SHELL_PREPARED="$DEPLOY_DIR/html_shell/index.prepared.html"
 
-COMMAND="${1:-help}"
+COMMAND="${1:-deploy}"
 DRY_RUN=false
 SKIP_TAG=false
 BUMP=""
@@ -263,7 +263,6 @@ get_release_commit_lines() {
     local output line parts
     output="$(git_cmd "${git_args[@]}" 2>/dev/null || true)"
     if [[ -z "$output" ]]; then
-        echo "- Нет записей"
         return
     fi
 
@@ -276,23 +275,28 @@ get_release_commit_lines() {
 
 write_gh_pages_readme() {
     local worktree_path="$1" version="$2" previous_version="$3"
-    local game_name pages_url play_link date commit_block
+    local template game_name pages_url play_link date commit_block content
+
+    template="$DEPLOY_DIR/gh-pages-README.template.md"
+    [[ -f "$template" ]] || { err "Missing deploy/gh-pages-README.template.md"; exit 1; }
 
     game_name="$(get_project_setting config/name)"
-    [[ -n "$game_name" ]] || game_name="Игра"
+    [[ -n "$game_name" ]] || game_name="Game"
     pages_url="$(read_json_value "$CONFIG_PATH" github_pages_url)"
     [[ -z "$pages_url" ]] && pages_url="$(github_pages_url || true)"
     play_link="${pages_url:-index.html}"
     date="$(date +"%Y-%m-%d %H:%M")"
     commit_block="$(get_release_commit_lines "$previous_version")"
+    [[ -n "$commit_block" ]] || commit_block="- (none)"
 
-    cat > "$worktree_path/README.md" <<EOF
-# [${game_name}](${play_link}) ${version}
-${date}
-## Изменения
-${commit_block}
----
-EOF
+    content="$(<"$template")"
+    content="${content//\{\{GAME_NAME\}\}/$game_name}"
+    content="${content//\{\{PLAY_LINK\}\}/$play_link}"
+    content="${content//\{\{VERSION\}\}/$version}"
+    content="${content//\{\{DATE\}\}/$date}"
+    content="${content//\{\{COMMITS\}\}/$commit_block}"
+
+    printf '%s' "$content" > "$worktree_path/README.md"
 }
 
 ensure_release_commit() {
@@ -424,11 +428,11 @@ initialize_gh_pages_branch() {
     git_cmd worktree add -B "$pages_branch" "$(read_json_value "$CONFIG_PATH" worktree_dir)"
 
     find "$worktree_path" -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
-    cat > "$worktree_path/README.md" <<'EOF'
-# Скоро здесь будет игра
-
-Запусти `deploy.bat deploy` из ветки main.
-EOF
+    if [[ -f "$DEPLOY_DIR/gh-pages-init.template.md" ]]; then
+        cp -f "$DEPLOY_DIR/gh-pages-init.template.md" "$worktree_path/README.md"
+    else
+        printf '# Coming soon\n' > "$worktree_path/README.md"
+    fi
 
     git -C "$worktree_path" add README.md
     git -C "$worktree_path" commit -m "Initialize gh-pages"
@@ -521,7 +525,9 @@ case "$COMMAND" in
 GodotDeploy — one-repo Web deploy to GitHub Pages
 
 Usage:
+  ./deploy/deploy.sh
   ./deploy/deploy.sh init
+  ./deploy/deploy.sh help
   ./deploy/deploy.sh deploy [--dry-run] [--skip-tag] [--bump patch|minor|major]
 EOF
         ;;

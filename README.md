@@ -28,6 +28,8 @@ cd ТВОЯ_ИГРА
 
 ### 3. Настрой деплой
 
+Дважды кликни **`deploy.bat`** или один раз для настройки:
+
 ```powershell
 .\deploy.bat init
 ```
@@ -50,16 +52,10 @@ cd ТВОЯ_ИГРА
 
 ### 5. Первый деплой
 
-```powershell
-.\deploy.bat deploy
-```
-
----
-
-## Деплой
+Дважды кликни **`deploy.bat`** или:
 
 ```powershell
-.\deploy.bat deploy
+.\deploy.bat
 ```
 
 Скрипт сам:
@@ -80,7 +76,7 @@ cd ТВОЯ_ИГРА
 1. Клонирует репо
 2. Ставит Godot 4.6 + Web Export Templates
 3. `.\deploy.bat init` + путь к Godot
-4. Правки → `.\deploy.bat deploy`
+4. Правки → **`deploy.bat`**
 
 ---
 
@@ -103,6 +99,6 @@ cd ТВОЯ_ИГРА
 
 ```bash
 chmod +x deploy/deploy.sh
-./deploy/deploy.sh init
-./deploy/deploy.sh deploy
+./deploy/deploy.sh init   # один раз
+./deploy/deploy.sh        # деплой
 ```

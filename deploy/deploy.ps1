@@ -1,10 +1,10 @@
 # GodotDeploy - export Godot Web build to gh-pages branch
-# Usage: .\deploy\deploy.ps1 init | deploy [-DryRun] [-SkipTag] [-Bump patch|minor|major]
+# Usage: deploy.bat | .\deploy\deploy.ps1 [init|deploy|help] [-DryRun] [-SkipTag] [-Bump patch|minor|major]
 
 param(
     [Parameter(Position = 0)]
     [ValidateSet("init", "deploy", "help")]
-    [string]$Command = "help",
+    [string]$Command = "deploy",
 
     [switch]$DryRun,
     [switch]$SkipTag,
@@ -146,6 +146,15 @@ function Resolve-NextVersion([object]$Config, [string]$BumpOverride) {
     $tagVersion = Get-LatestTagVersion
     $base = Get-MaxSemVer $projectVersion $tagVersion
     return Bump-Version $base $part
+}
+
+function Read-Utf8Text([string]$Path) {
+    return [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8)
+}
+
+function Write-Utf8FileNoBom([string]$Path, [string]$Content) {
+    $utf8 = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllText($Path, $Content, $utf8)
 }
 
 function Restore-TemplateReadme {
@@ -418,7 +427,7 @@ function Get-ReleaseCommitLines([string]$SinceVersion) {
 
     $lines = @()
     if (-not $output) {
-        return @("- Нет записей")
+        return $lines
     }
 
     foreach ($line in ($output -split "`n")) {
@@ -432,8 +441,13 @@ function Get-ReleaseCommitLines([string]$SinceVersion) {
 }
 
 function Write-GhPagesReadme([string]$WorktreePath, [string]$Version, [string]$PreviousVersion, [object]$Config) {
+    $templatePath = Join-Path $DeployDir "gh-pages-README.template.md"
+    if (-not (Test-Path $templatePath)) {
+        throw "Missing deploy/gh-pages-README.template.md"
+    }
+
     $gameName = Get-ProjectSetting "config/name"
-    if (-not $gameName) { $gameName = "Игра" }
+    if (-not $gameName) { $gameName = "Game" }
 
     $pagesUrl = $Config.github_pages_url
     if (-not $pagesUrl) { $pagesUrl = Get-GitHubPagesUrl }
@@ -441,17 +455,17 @@ function Write-GhPagesReadme([string]$WorktreePath, [string]$Version, [string]$P
 
     $date = Get-Date -Format "yyyy-MM-dd HH:mm"
     $commits = Get-ReleaseCommitLines $PreviousVersion
-    $commitBlock = ($commits -join "`n")
+    $commitBlock = if ($commits.Count -gt 0) { ($commits -join "`n") } else { "- (none)" }
 
-    $content = @"
-# [$gameName]($playLink) $Version
-$date
-## Изменения
-$commitBlock
----
-"@
+    $content = Read-Utf8Text $templatePath
+    $content = $content.Replace('{{GAME_NAME}}', $gameName)
+    $content = $content.Replace('{{PLAY_LINK}}', $playLink)
+    $content = $content.Replace('{{VERSION}}', $Version)
+    $content = $content.Replace('{{DATE}}', $date)
+    $content = $content.Replace('{{COMMITS}}', $commitBlock)
 
-    Set-Content -Path (Join-Path $WorktreePath "README.md") -Value $content -Encoding UTF8
+    $readmePath = Join-Path $WorktreePath "README.md"
+    Write-Utf8FileNoBom -Path $readmePath -Content $content
 }
 
 function Ensure-ReleaseCommit([object]$Config, [string]$Version) {
@@ -588,12 +602,12 @@ function Initialize-GhPagesBranch([object]$Config) {
     Invoke-Git @("worktree", "add", "-B", $pagesBranch, $Config.worktree_dir)
     Clear-DirectoryContents $worktreePath
 
-    $placeholder = @"
-# Скоро здесь будет игра
-
-Запусти ``deploy.bat deploy`` из ветки main.
-"@
-    Set-Content -Path (Join-Path $worktreePath "README.md") -Value $placeholder -Encoding UTF8
+    $initReadme = Join-Path $DeployDir "gh-pages-init.template.md"
+    if (Test-Path $initReadme) {
+        Copy-Item -Path $initReadme -Destination (Join-Path $worktreePath "README.md") -Force
+    } else {
+        Write-Utf8FileNoBom -Path (Join-Path $worktreePath "README.md") -Content "# Coming soon`n"
+    }
 
     try {
         Invoke-GitIn $worktreePath @("add", "README.md")
@@ -611,8 +625,10 @@ function Show-Help {
 GodotDeploy - one-repo Web deploy to GitHub Pages
 
 Usage:
-  .\deploy\deploy.ps1 init
-  .\deploy\deploy.ps1 deploy [-DryRun] [-SkipTag] [-Bump patch|minor|major]
+  deploy.bat
+  deploy.bat init
+  deploy.bat help
+  deploy.bat deploy [-DryRun] [-SkipTag] [-Bump patch|minor|major]
 
 Commands:
   init    Create config files and verify setup
@@ -699,7 +715,7 @@ function Invoke-Deploy {
     Write-Ok "Godot: $godot"
 
     $exportDir = Join-Path $ProjectRoot $config.export_output_dir
-    $exportRelative = "$($config.export_output_dir)/index.html".Replace('\', '/')
+    $exportRelative = ($config.export_output_dir.TrimEnd('\', '/') + "/index.html") -replace '\\', '/'
     Prepare-HtmlShell $version
     Invoke-GodotExport $godot $config.export_preset $exportRelative
     Write-Ok "Export complete"

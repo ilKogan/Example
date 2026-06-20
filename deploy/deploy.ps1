@@ -369,16 +369,29 @@ function Prepare-HtmlShell([string]$Version) {
     if (-not (Test-Path $ShellTemplate)) {
         throw "Missing HTML shell template: $ShellTemplate"
     }
-    $content = Get-Content $ShellTemplate -Raw
+    $content = Read-Utf8Text $ShellTemplate
     $content = $content -replace '\{\{VERSION\}\}', $Version
-    Set-Content -Path $ShellPrepared -Value $content -NoNewline
+    Write-Utf8FileNoBom -Path $ShellPrepared -Content $content
 }
 
-function Invoke-GodotExport([string]$GodotPath, [string]$Preset, [string]$RelativeOutputPath) {
+function Assert-ExportVersion([string]$ExportHtmlPath, [string]$Version) {
+    if (-not (Test-Path $ExportHtmlPath)) {
+        throw "Export file missing: $ExportHtmlPath"
+    }
+    $html = Read-Utf8Text $ExportHtmlPath
+    $needle = "v$Version"
+    if ($html -notmatch [regex]::Escape($needle)) {
+        throw "Export version mismatch: expected '$needle' in index.html. Godot may have used a stale HTML shell."
+    }
+}
+
+function Invoke-GodotExport([string]$GodotPath, [string]$Preset, [string]$RelativeOutputPath, [string]$Version) {
     $outputFile = Join-Path $ProjectRoot ($RelativeOutputPath -replace '/', [IO.Path]::DirectorySeparatorChar)
     $outputDir = Split-Path $outputFile -Parent
 
-    if (-not (Test-Path $outputDir)) {
+    if (Test-Path $outputDir) {
+        Clear-DirectoryContents $outputDir
+    } else {
         New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
     }
 
@@ -395,6 +408,7 @@ function Invoke-GodotExport([string]$GodotPath, [string]$Preset, [string]$Relati
 
     for ($i = 0; $i -lt 10; $i++) {
         if (Test-Path $outputFile) {
+            Assert-ExportVersion $outputFile $Version
             return
         }
         Start-Sleep -Milliseconds 500
@@ -717,7 +731,7 @@ function Invoke-Deploy {
     $exportDir = Join-Path $ProjectRoot $config.export_output_dir
     $exportRelative = ($config.export_output_dir.TrimEnd('\', '/') + "/index.html") -replace '\\', '/'
     Prepare-HtmlShell $version
-    Invoke-GodotExport $godot $config.export_preset $exportRelative
+    Invoke-GodotExport $godot $config.export_preset $exportRelative $version
     Write-Ok "Export complete"
 
     Publish-GhPages $config $exportDir $version $previousVersion
@@ -735,7 +749,7 @@ function Invoke-Deploy {
     if ($pagesUrl) {
         Write-Host "Play: $pagesUrl" -ForegroundColor Green
     }
-    Write-Warn "If you see an old build in browser, hard-refresh (Ctrl+F5)."
+    Write-Warn "If loading screen shows old version, hard-refresh: Ctrl+F5"
 }
 
 Push-Location $ProjectRoot

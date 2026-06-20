@@ -3,9 +3,16 @@
 <head>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0">
+	<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+	<meta http-equiv="Pragma" content="no-cache">
+	<meta http-equiv="Expires" content="0">
 	<title>$GODOT_PROJECT_NAME</title>
 	<meta name="game-version" content="{{VERSION}}">
 	<style>
+		*, *::before, *::after {
+			box-sizing: border-box;
+		}
+
 		html, body, #canvas {
 			margin: 0;
 			padding: 0;
@@ -13,11 +20,11 @@
 		}
 
 		body {
-			color: #e8e8e8;
-			background-color: #14141f;
+			color: #f0f2f8;
+			background: #0c0e14;
 			overflow: hidden;
 			touch-action: none;
-			font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+			font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
 		}
 
 		#canvas {
@@ -35,37 +42,80 @@
 			flex-direction: column;
 			justify-content: center;
 			align-items: center;
-			gap: 1rem;
-			background: linear-gradient(160deg, #14141f 0%, #1e1e2e 100%);
+			padding: 2rem;
+			background:
+				radial-gradient(ellipse 80% 60% at 50% 40%, rgba(71, 140, 191, 0.12) 0%, transparent 70%),
+				linear-gradient(165deg, #0c0e14 0%, #12151f 45%, #0a0c12 100%);
 			visibility: hidden;
+			opacity: 1;
+			transition: opacity 0.35s ease;
+			z-index: 10;
 		}
 
-		#status-title {
-			font-size: clamp(1.5rem, 4vw, 2.5rem);
-			font-weight: 700;
-			margin: 0;
+		#status.fade-out {
+			opacity: 0;
+			pointer-events: none;
+		}
+
+		.loader-card {
+			width: min(420px, 92vw);
 			text-align: center;
 		}
 
+		#status-title {
+			margin: 0 0 0.5rem;
+			font-size: clamp(1.75rem, 5vw, 2.75rem);
+			font-weight: 700;
+			letter-spacing: 0.02em;
+			line-height: 1.15;
+			background: linear-gradient(180deg, #ffffff 0%, #b8c4dc 100%);
+			-webkit-background-clip: text;
+			background-clip: text;
+			color: transparent;
+		}
+
 		#status-version {
-			font-size: 1rem;
-			opacity: 0.7;
-			margin: 0;
+			display: inline-block;
+			margin: 0 0 2rem;
+			padding: 0.25rem 0.75rem;
+			font-size: 0.85rem;
+			font-weight: 500;
+			letter-spacing: 0.06em;
+			color: #8b9ab8;
+			border: 1px solid rgba(139, 154, 184, 0.25);
+			border-radius: 999px;
+			background: rgba(255, 255, 255, 0.04);
+		}
+
+		.progress-wrap {
+			width: 100%;
+			height: 6px;
+			border-radius: 999px;
+			background: rgba(255, 255, 255, 0.08);
+			overflow: hidden;
+			box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
 		}
 
 		#status-progress {
-			width: min(320px, 70vw);
-			height: 8px;
-			accent-color: #478cbf;
+			display: block;
+			width: 0%;
+			height: 100%;
+			border-radius: inherit;
+			background: linear-gradient(90deg, #3a7cb8 0%, #5eb3f6 50%, #7ec8ff 100%);
+			box-shadow: 0 0 12px rgba(94, 179, 246, 0.45);
+			transition: width 0.15s ease-out;
 		}
 
 		#status-notice {
 			display: none;
-			max-width: 640px;
+			margin-top: 1.5rem;
 			padding: 1rem 1.25rem;
-			border-radius: 8px;
-			background: #5b3943;
-			border: 1px solid #9b3943;
+			border-radius: 10px;
+			background: rgba(91, 57, 67, 0.85);
+			border: 1px solid rgba(155, 57, 67, 0.6);
+			color: #f0e0e4;
+			font-size: 0.9rem;
+			line-height: 1.45;
 			text-align: center;
 			white-space: pre-wrap;
 		}
@@ -78,10 +128,14 @@
 	</canvas>
 
 	<div id="status">
-		<h1 id="status-title">$GODOT_PROJECT_NAME</h1>
-		<p id="status-version">v{{VERSION}}</p>
-		<progress id="status-progress" value="0" max="100"></progress>
-		<div id="status-notice"></div>
+		<div class="loader-card">
+			<h1 id="status-title">$GODOT_PROJECT_NAME</h1>
+			<p id="status-version">v{{VERSION}}</p>
+			<div class="progress-wrap">
+				<div id="status-progress"></div>
+			</div>
+			<div id="status-notice"></div>
+		</div>
 	</div>
 
 	<script src="$GODOT_URL"></script>
@@ -103,12 +157,16 @@
 					return;
 				}
 				if (mode === 'hidden') {
-					statusOverlay.remove();
+					statusOverlay.classList.add('fade-out');
+					setTimeout(function () {
+						statusOverlay.remove();
+					}, 350);
 					initializing = false;
 					return;
 				}
 				statusOverlay.style.visibility = 'visible';
-				statusProgress.style.display = mode === 'progress' ? 'block' : 'none';
+				statusOverlay.querySelector('.progress-wrap').style.display =
+					mode === 'progress' ? 'block' : 'none';
 				statusNotice.style.display = mode === 'notice' ? 'block' : 'none';
 				statusMode = mode;
 			}
@@ -135,14 +193,13 @@
 			});
 
 			if (missing.length !== 0) {
-				const missingMsg = 'Missing browser features:\n' + missing.join('\n');
-				displayFailureNotice(missingMsg);
+				displayFailureNotice('Missing browser features:\n' + missing.join('\n'));
 			} else {
 				setStatusMode('progress');
 				engine.startGame({
 					onProgress: function (current, total) {
 						if (current > 0 && total > 0) {
-							statusProgress.value = (current / total) * 100;
+							statusProgress.style.width = ((current / total) * 100).toFixed(1) + '%';
 						}
 					},
 				}).then(function () {

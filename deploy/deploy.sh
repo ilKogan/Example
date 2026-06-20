@@ -319,15 +319,27 @@ ensure_release_commit() {
     fi
 }
 
+assert_export_version() {
+    local html_file="$1" version="$2"
+    [[ -f "$html_file" ]] || { err "Export file missing: $html_file"; exit 1; }
+    grep -q "v${version}" "$html_file" || {
+        err "Export version mismatch: expected v${version} in index.html"
+        exit 1
+    }
+}
+
 invoke_export() {
-    local godot="$1" preset="$2" output_dir="$3"
+    local godot="$1" preset="$2" output_dir="$3" version="$4"
+    local html_file="$output_dir/index.html"
+    rm -rf "${output_dir:?}/"* 2>/dev/null || true
     mkdir -p "$output_dir"
     step "Exporting Web build..."
     if $DRY_RUN; then
         warn "Dry run: skip Godot export"
-        return
+        return 0
     fi
     "$godot" --headless --path "$PROJECT_ROOT" --export-release "$preset" "$output_dir/index.html"
+    assert_export_version "$html_file" "$version"
 }
 
 publish_gh_pages() {
@@ -500,7 +512,7 @@ cmd_deploy() {
     ok "Godot: $godot"
 
     prepare_html_shell "$version"
-    invoke_export "$godot" "$preset" "$export_dir"
+    invoke_export "$godot" "$preset" "$export_dir" "$version"
     ok "Export complete"
 
     publish_gh_pages "$export_dir" "$version" "$previous_version"

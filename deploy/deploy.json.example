@@ -1,0 +1,12 @@
+{
+  "export_preset": "Web",
+  "export_output_dir": ".deploy-tmp",
+  "pages_branch": "gh-pages",
+  "source_branch": "main",
+  "worktree_dir": ".pages-worktree",
+  "commit_message_template": "Deploy {version}",
+  "source_commit_template": "Release {version}",
+  "auto_bump": "patch",
+  "pull_before_deploy": true,
+  "github_pages_url": ""
+}

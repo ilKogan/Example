@@ -166,6 +166,34 @@ function Invoke-GitQuiet([string[]]$GitArgs) {
     return $code
 }
 
+function Ensure-SourceBranch([string]$Branch) {
+    if (-not $Branch) { $Branch = "main" }
+
+    $current = (git -C $ProjectRoot branch --show-current 2>$null | Out-String).Trim()
+
+    if ($current -eq $Branch) {
+        return
+    }
+
+    if (-not $current) {
+        Invoke-Git @("checkout", "-B", $Branch)
+        return
+    }
+
+    if ($current -eq "master" -and $Branch -eq "main") {
+        Invoke-Git @("branch", "-M", "main")
+        return
+    }
+
+    git -C $ProjectRoot show-ref --verify --quiet "refs/heads/$Branch"
+    if ($LASTEXITCODE -eq 0) {
+        Invoke-Git @("checkout", $Branch)
+        return
+    }
+
+    Invoke-Git @("branch", "-M", $Branch)
+}
+
 function Complete-ReadmeFromTemplate {
     Restore-TemplateReadme
     Invoke-GitQuiet @("add", "README.md") | Out-Null
@@ -180,6 +208,8 @@ function Sync-SourceBranchNoHead([string]$Branch) {
     } else {
         Invoke-Git @("commit", "--allow-empty", "-m", "Initial project setup")
     }
+
+    Ensure-SourceBranch $Branch
 
     $pullExit = Invoke-GitQuiet @(
         "pull", "origin", $Branch,
@@ -234,6 +264,7 @@ function Sync-SourceBranch([object]$Config) {
     }
 
     Complete-ReadmeFromTemplate
+    Ensure-SourceBranch $branch
 }
 
 function Find-Godot([string]$ConfiguredPath) {
@@ -504,6 +535,11 @@ function Push-SourceAndTag([object]$Config, [string]$Version) {
         return
     }
 
+    $branch = $Config.source_branch
+    if (-not $branch) { $branch = "main" }
+
+    Ensure-SourceBranch $branch
+
     $tagName = "v$Version"
 
     git -C $ProjectRoot rev-parse -q --verify "refs/tags/$tagName" 2>$null
@@ -513,12 +549,12 @@ function Push-SourceAndTag([object]$Config, [string]$Version) {
 
     if (-not $SkipTag) {
         Invoke-Git @("tag", $tagName)
-        Write-Step "Pushing $($Config.source_branch) and tag..."
-        Invoke-Git @("push", "origin", $Config.source_branch)
+        Write-Step "Pushing $branch and tag..."
+        Invoke-Git @("push", "-u", "origin", $branch)
         Invoke-Git @("push", "origin", $tagName)
     } else {
-        Write-Step "Pushing $($Config.source_branch)..."
-        Invoke-Git @("push", "origin", $Config.source_branch)
+        Write-Step "Pushing $branch..."
+        Invoke-Git @("push", "-u", "origin", $branch)
     }
 }
 

@@ -115,6 +115,31 @@ resolve_next_version() {
     bump_version "$base" "$part"
 }
 
+ensure_source_branch() {
+    local branch="${1:-main}"
+    local current
+    current="$(git_cmd branch --show-current 2>/dev/null || true)"
+
+    [[ "$current" == "$branch" ]] && return 0
+
+    if [[ -z "$current" ]]; then
+        git_cmd checkout -B "$branch"
+        return 0
+    fi
+
+    if [[ "$current" == "master" && "$branch" == "main" ]]; then
+        git_cmd branch -M main
+        return 0
+    fi
+
+    if git_cmd show-ref --verify --quiet "refs/heads/$branch"; then
+        git_cmd checkout "$branch"
+        return 0
+    fi
+
+    git_cmd branch -M "$branch"
+}
+
 complete_readme_from_template() {
     restore_template_readme
     git_cmd add README.md 2>/dev/null || true
@@ -129,6 +154,8 @@ sync_source_branch_no_head() {
     else
         git_cmd commit --allow-empty -m "Initial project setup"
     fi
+
+    ensure_source_branch "$branch"
 
     if ! git_cmd pull origin "$branch" --allow-unrelated-histories --no-rebase -X ours; then
         if git_cmd rev-parse --verify MERGE_HEAD >/dev/null 2>&1; then
@@ -179,6 +206,7 @@ sync_source_branch() {
     fi
 
     complete_readme_from_template
+    ensure_source_branch "$source_branch"
 }
 
 restore_template_readme() {
@@ -346,12 +374,15 @@ push_source_and_tag() {
     local version="$1"
     local source_branch tag_name
     source_branch="$(read_json_value "$CONFIG_PATH" source_branch)"
+    [[ -n "$source_branch" ]] || source_branch="main"
     tag_name="v$version"
 
     if $DRY_RUN; then
         warn "Dry run: would tag $tag_name"
         return 0
     fi
+
+    ensure_source_branch "$source_branch"
 
     if git_cmd rev-parse -q --verify "refs/tags/$tag_name" >/dev/null; then
         err "Tag $tag_name already exists"
@@ -360,10 +391,10 @@ push_source_and_tag() {
 
     if ! $SKIP_TAG; then
         git_cmd tag "$tag_name"
-        git_cmd push origin "$source_branch"
+        git_cmd push -u origin "$source_branch"
         git_cmd push origin "$tag_name"
     else
-        git_cmd push origin "$source_branch"
+        git_cmd push -u origin "$source_branch"
     fi
 }
 
